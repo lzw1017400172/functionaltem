@@ -1,0 +1,160 @@
+
+<!doctype html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>弹幕</title>
+    <link rel="stylesheet" type="text/css" href="static/css/bootstrap.min.css" media="screen" />
+    <link rel="stylesheet" type="text/css" href="static/css/style.css" />
+    <link rel="stylesheet" type="text/css" href="dist/css/barrager.css">
+    <link rel="stylesheet" type="text/css" href="static/pick-a-color/css/pick-a-color-1.2.3.min.css">
+    <link type="text/css" rel="stylesheet" href="static/syntaxhighlighter/styles/shCoreDefault.css"/>
+    <!--[if IE]>
+    <script src="http://cdn.bootcss.com/html5shiv/3.7.0/html5shiv.min.js"></script>
+    <![endif]-->
+</head>
+<body class="bb-js">
+<div class="htmleaf-container">
+
+    <div class="container">
+        <section class="bb-section">
+            <div class="lead-top">
+                <div class="text-center">
+                    <p>
+                        <button  class="bb-trigger btn btn-primary btn-lg  bb-light-blue"  onclick="click_run_example()"> 弹弹弹 </button>
+                    </p>
+                    <p>
+                        <button  class="bb-trigger btn btn-primary btn-lg  bb-light-blue"  onclick="clear_barrage()"> clear_barrage </button>
+                    </p>
+                    <p>
+                        <input class="form-control" id="barrageMessge" placeholder="发送弹幕">
+                        <button  class="bb-trigger btn btn-primary btn-lg  bb-light-blue"  onclick="sendBarrage()"> sendBarrage </button>
+                    </p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+</div>
+
+<script type="text/javascript" src="static/js/jquery-1.9.1.min.js"></script>
+<script type="text/javascript" src="static/js/bootstrap.min.js"></script>
+<script type="text/javascript" src="static/js/tinycolor-0.9.15.min.js"></script>
+<script type="text/javascript" src="dist/js/jquery.barrager.min.js"></script>
+<script type="text/javascript" src="static/pick-a-color/js/pick-a-color-1.2.3.min.js"></script>
+
+<script type="text/javascript">
+
+    var lockReconnect = false;  //避免ws重复连接
+    var ws = null;          // 判断当前浏览器是否支持WebSocket
+    var wsUrl = "ws://localhost:7010/websocket/anon/socketServer.do?sid=2222";
+
+    createWebSocket(wsUrl);   //连接ws
+    function createWebSocket(url) {
+        try{
+            if('WebSocket' in window){
+                ws = new WebSocket(url);
+            }else if('MozWebSocket' in window){
+                ws = new MozWebSocket(url);
+            }else{
+                alert("您的浏览器不支持websocket协议,建议使用新版谷歌、火狐等浏览器，请勿使用IE10以下浏览器，360浏览器请使用极速模式，不要使用兼容模式！");
+            }
+            initEventHandle();
+        }catch(e){
+            reconnect(url);
+            console.log(e);
+        }
+    }
+
+    function initEventHandle() {
+        ws.onclose = function () {
+            reconnect(wsUrl);
+            console.log("llws连接关闭!" + new Date().toUTCString());
+        };
+        ws.onerror = function () {
+            reconnect(wsUrl);
+            console.log("llws连接错误!");
+        };
+        ws.onopen = function () {
+            heartCheck.reset().start();      //心跳检测重置
+            console.log("llws连接成功!" + new Date().toUTCString());
+        };
+        ws.onmessage = function (event) {    //如果获取到消息，心跳检测重置
+            heartCheck.reset().start();      //拿到任何消息都说明当前连接是正常的
+            if (event.data != 'pong') {
+                run_example(event.data);
+            } else {
+                console.log("pong");
+            }
+        };
+        // 监听窗口关闭事件，当窗口关闭时，主动去关闭websocket连接，防止连接还没断开就关闭窗口，server端会抛异常。
+        window.onbeforeunload = function () {
+            ws.close();
+        }
+
+        function reconnect(url) {
+            console.log("reconnectreconnectreconnectreconnect")
+            if (lockReconnect) return;
+            lockReconnect = true;
+            setTimeout(function () {     //没连接上会一直重连，设置延迟避免请求过多
+                createWebSocket(url);
+                lockReconnect = false;
+            }, 10000);
+        }
+
+        //心跳检测
+        var heartCheck = {
+            timeout: 540000,        //5分钟发一次心跳
+            timeoutObj: null,
+            serverTimeoutObj: null,
+            reset: function () {
+                clearTimeout(this.timeoutObj);
+                clearTimeout(this.serverTimeoutObj);
+                return this;
+            },
+            start: function () {
+                var self = this;
+                this.timeoutObj = setTimeout(function () {
+                    //这里发送一个心跳，后端收到后，返回一个心跳消息，
+                    //onmessage拿到返回的心跳就说明连接正常
+                    ws.send("ping");
+                    console.log("ping!")
+                    self.serverTimeoutObj = setTimeout(function () {//如果超过一定时间还没重置，说明后端主动断开了
+                        ws.close();     //如果onclose会执行reconnect，我们执行ws.close()就行了.如果直接执行reconnect 会触发onclose导致重连两次
+                    }, self.timeout)
+                }, this.timeout)
+            }
+        }
+    }
+
+    function  sendBarrage(){
+        ws.send($("#barrageMessge").val());
+    }
+
+    function  clear_barrage(){
+        $.fn.barrager.removeAll();
+    }
+
+    function  click_run_example(){
+        run_example("00000000000000000000000000000");
+    }
+
+    function  run_example(msg){
+        var example_item={
+            img:'static/img/cute.png', //图片
+            info:msg, //文字
+            href:'', //链接
+            close:true, //显示关闭按钮
+            speed:6, //延迟,单位秒,默认6
+            bottom:70,
+            color:'#bdbdbd', //颜色,默认白色
+            old_ie_color:'#bdbdbd', //ie低版兼容色,不能与网页背景相同,默认黑色
+        }
+        $('body').barrager(example_item);
+    }
+
+</script>
+</body>
+</html>
