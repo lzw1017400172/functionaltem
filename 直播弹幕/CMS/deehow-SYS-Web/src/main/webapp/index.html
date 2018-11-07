@@ -49,8 +49,9 @@
 
     var lockReconnect = false;  //避免ws重复连接
     var ws = null;          // 判断当前浏览器是否支持WebSocket
-    var wsUrl = "ws://localhost:7010/websocket/anon/socketServer.do?sid=2222";
-
+    var path = window.location.host;
+    var wsUrl = "ws://"+path+"/websocket/anon/socketServer.do?sid=2222";
+    
     createWebSocket(wsUrl);   //连接ws
     function createWebSocket(url) {
         try{
